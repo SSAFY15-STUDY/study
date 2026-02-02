@@ -1,0 +1,52 @@
+name: PR Notification
+
+on:
+  pull_request:
+    types: [opened, synchronize, closed]
+
+jobs:
+  # 1. 공통 데이터 가공 (Single Source of Truth)
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      action_type: ${{ steps.set_info.outputs.action_type }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      author: ${{ github.event.pull_request.user.login }}
+    steps:
+      - id: set_info
+        run: |
+          if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "action_type=🏁 PR 머지 완료" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.action }}" = "opened" ]; then
+            echo "action_type=🚀 새로운 PR 생성" >> $GITHUB_OUTPUT
+          else
+            echo "action_type=♻️ PR 수정본 업데이트" >> $GITHUB_OUTPUT
+          fi
+
+  # 2. Mattermost 알림 (가공된 데이터 사용)
+  notify-mattermost:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Mattermost Message
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+          -d "{
+            \"username\": \"GitHub Bot\",
+            \"text\": \"### ${{ needs.prepare.outputs.action_type }}\n- **제목**: ${{ needs.prepare.outputs.pr_title }}\n- **작성자**: @${{ needs.prepare.outputs.author }}\n- **링크**: [GitHub에서 확인하기](${{ needs.prepare.outputs.pr_url }})\"
+          }" \
+          ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+
+  # 3. Slack 알림 (가공된 데이터 사용)
+  notify-slack:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Message
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{
+            \"text\": \"*${{ needs.prepare.outputs.action_type }}*\n> *제목:* ${{ needs.prepare.outputs.pr_title }}\n> *작성자:* ${{ needs.prepare.outputs.author }}\n> *링크:* <${{ needs.prepare.outputs.pr_url }}|바로가기>\"
+          }" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
