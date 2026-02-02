@@ -2,7 +2,7 @@ name: PR Notification
 
 on:
   pull_request:
-    types: [opened, synchronize, closed]
+    types: [opened, synchronize]
 
 jobs:
   # 1. 공통 데이터 가공 (Single Source of Truth)
